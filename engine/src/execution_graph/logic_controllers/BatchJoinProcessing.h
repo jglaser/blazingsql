@@ -880,19 +880,6 @@ public:
 		// 	}
 		// });
 
-		std::cout<<"waiting left dist!"<<std::endl;
-		distribute_left_thread.join();
-		std::cout<<"distributed all left!"<<std::endl;
-		int total_count_left = node_count_left[self_node.id()];
-		for (auto message : messages_to_wait_for_left){
-			std::cout<<"Waiting for message"<<message<<std::endl;
-				auto meta_message = this->query_graph->get_input_cache()->pullCacheData(message);
-				total_count_left += std::stoi(static_cast<ral::cache::GPUCacheDataMetaData *>(meta_message.get())->getMetadata().get_values()[ral::cache::PARTITION_COUNT]);
-		}
-		std::cout<<"Waiting for left"<<total_count_left<<" parts"<<std::endl;
-		this->output_.get_cache("output_a")->wait_for_count(total_count_left);
-		std::cout<<"got all left"<<std::endl;
-
 		std::map<std::string, int> node_count_right;
 		std::vector<std::string> messages_to_wait_for_right;
 		BlazingMutableThread distribute_right_thread(&JoinPartitionKernel::partition_table, std::to_string(this->get_id()), this->context.get(),
@@ -905,6 +892,24 @@ public:
 			this->logger.get(),
 			RIGHT_TABLE_IDX);
 
+		distribute_left_thread.join();
+		std::cout<<"distributed all left!"<<std::endl;
+		distribute_right_thread.join();
+		std::cout<<"distributed right"<<std::endl;
+
+		std::cout<<"waiting left dist!"<<std::endl;
+		int total_count_left = node_count_left[self_node.id()];
+		for (auto message : messages_to_wait_for_left){
+			std::cout<<"Waiting for message"<<message<<std::endl;
+				auto meta_message = this->query_graph->get_input_cache()->pullCacheData(message);
+				total_count_left += std::stoi(static_cast<ral::cache::GPUCacheDataMetaData *>(meta_message.get())->getMetadata().get_values()[ral::cache::PARTITION_COUNT]);
+		}
+        #if 1
+		std::cout<<"Waiting for left"<<total_count_left<<" parts"<<std::endl;
+		this->output_.get_cache("output_a")->wait_for_count(total_count_left);
+		std::cout<<"got all left"<<std::endl;
+        #endif
+
 		// create thread with ExternalBatchColumnDataSequence for the right table being distriubted
 		// BlazingThread right_consumer([cloned_context, this](){
 		// 	ExternalBatchColumnDataSequence<ColumnDataPartitionMessage> external_input_right(cloned_context, this->get_message_id(), this);
@@ -915,8 +920,6 @@ public:
 		// 	}
 		// });
 		std::cout<<"waiting for right"<<std::endl;
-		distribute_right_thread.join();
-		std::cout<<"distributed right"<<std::endl;
 		int total_count_right = node_count_right[self_node.id()];
 		for (auto message : messages_to_wait_for_right){
 						std::cout<<"Waiting for message right "<<message<<std::endl;
@@ -924,10 +927,12 @@ public:
 				total_count_right += std::stoi(static_cast<ral::cache::GPUCacheDataMetaData *>(meta_message.get())->getMetadata().get_values()[ral::cache::PARTITION_COUNT]);
 				std::cout<<total_count_right<<" is total count right"<<std::endl;
 		}
+        #if 1
 		this->output_.get_cache("output_b")->wait_for_count(total_count_right);
 		std::cout<<"got all right"<<std::endl;
 		// left_consumer.join();
 		// right_consumer.join();
+        #endif
 	}
 
 	void small_table_scatter_distribution(std::unique_ptr<ral::frame::BlazingTable> small_table_batch,
