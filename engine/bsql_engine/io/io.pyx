@@ -196,6 +196,7 @@ cdef class PyBlazingCache:
             metadata_map[c_key] = metadata[key].encode()
 
         c_metadata.set_values(metadata_map)
+        print("this was the metadata",flush=True)
         cdef vector[string] column_names
         for column_name in cudf_data:
            column_names.push_back(str.encode(column_name))
@@ -206,7 +207,12 @@ cdef class PyBlazingCache:
         cdef unique_ptr[BlazingTable] blazing_table = make_unique[BlazingTable](table_view(column_views), column_names)
         deref(blazing_table).ensureOwnership()
         cdef unique_ptr[cio.GPUCacheDataMetaData] ptr = make_unique[cio.GPUCacheDataMetaData](move(blazing_table),c_metadata)
-        deref(self.c_cache).addCacheData(blaz_move2(ptr),metadata["message_id"].encode(),1)
+        cdef string message_id = metadata["message_id"].encode()
+
+        print("Trying to add to cache with meta")
+        with nogil:
+            deref(self.c_cache).addCacheData(blaz_move2(ptr),message_id,1)
+        print("Done add to cache with meta")
 
 
     def has_next_now(self,):
@@ -222,10 +228,13 @@ cdef class PyBlazingCache:
         for cython_col in cudf_data._data.values():
             column_views.push_back(cython_col.view())
         cdef unique_ptr[BlazingTable] blazing_table = make_unique[BlazingTable](table_view(column_views), column_names)
+        print("before ensureOwnership")
         deref(blazing_table).ensureOwnership()
         cdef string message_id
+        print("before addToCache")
         with nogil:
             deref(self.c_cache).addToCache(blaz_move(blazing_table),message_id,1)
+        print("added to cache!")
 
     def pull_from_cache(self):
         cdef unique_ptr[CacheData] cache_data_generic
@@ -398,11 +407,11 @@ cdef class PyBlazingGraph:
     cdef shared_ptr[cio.graph] ptr
 
     def get_kernel_output_cache(self,kernel_id, cache_id):
-        print("about to make cache")
-        cache = PyBlazingCache()
-        print("made new cache")
-        cache.c_cache = deref(self.ptr).get_kernel_output_cache(int(kernel_id),str.encode(cache_id))
-        return cache
+            print("about to make cache ({},{})".format(kernel_id,cache_id),flush=True)
+            cache = PyBlazingCache()
+            print("made new cache")
+            cache.c_cache = deref(self.ptr).get_kernel_output_cache(int(kernel_id),str.encode(cache_id))
+            return cache
 
     cpdef set_input_and_output_caches(self, PyBlazingCache input_cache, PyBlazingCache output_cache):
         deref(self.ptr).set_input_and_output_caches(input_cache.c_cache, output_cache.c_cache)

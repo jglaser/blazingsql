@@ -159,7 +159,7 @@ cdef extern from "../src/execution_graph/logic_controllers/CacheMachine.h" names
             map[string, string] get_map()
             pair[unique_ptr[BlazingTable], MetadataDictionary ] decacheWithMetaData()
         cdef cppclass CacheMachine:
-            void addCacheData(unique_ptr[CacheData] cache_data, const string & message_id, bool always_add )
+            void addCacheData(unique_ptr[CacheData] cache_data, const string & message_id, bool always_add ) nogil
             void addToCache(unique_ptr[BlazingTable] table, const string & message_id , bool always_add) nogil except+
             unique_ptr[CacheData] pullCacheData() nogil
             unique_ptr[CacheData] pullCacheData(string message_id) nogil
@@ -178,7 +178,7 @@ cdef extern from * namespace "blazing":
         """
         cdef T blaz_move[T](T) nogil
 
-        cdef unique_ptr[CacheData] blaz_move2(unique_ptr[GPUCacheDataMetaData])
+        cdef unique_ptr[CacheData] blaz_move2(unique_ptr[GPUCacheDataMetaData]) nogil
 
 cdef extern from "../include/engine/engine.h" nogil:
 
@@ -196,7 +196,7 @@ cdef extern from "../include/engine/engine.h" nogil:
             vector[string] relational_algebra_steps
             vector[string] table_names
             vector[vector[int]] table_columns
-        TableScanInfo getTableScanInfo(string logicalPlan)
+        TableScanInfo getTableScanInfo(string logicalPlan) nogil
 
 cdef extern from "../include/engine/initialize.h":
     cdef pair[shared_ptr[CacheMachine], shared_ptr[CacheMachine] ] initialize(int ralId, string worker_id, int gpuId, string network_iface_name, string ralHost, int ralCommunicationPort, bool singleNode, map[string,string] config_options) nogil except +raiseInitializeError
