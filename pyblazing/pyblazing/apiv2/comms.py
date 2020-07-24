@@ -32,7 +32,6 @@ async def route_message(msg):
         print(msg.data)
         cache.add_to_cache(msg.data)
     else:
-        print("going into alt")
         cache = worker.input_cache
         if(msg.data is None):
             import cudf
@@ -42,6 +41,7 @@ async def route_message(msg):
 
 
 
+<<<<<<< HEAD
     def __init__(self):
         self.dask_worker = get_worker()
         # create a single UCX instance for the lifetime of this worker
@@ -109,6 +109,39 @@ async def route_message(msg):
         self.stoprequest.set()
         await worker_task
         await self.ucx.flush_writes()
+=======
+class PollingPlugin:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def setup(self, worker=None):
+        self._worker = worker
+        self._pc = PeriodicCallback(callback=self.async_run_polling, callback_time=100)
+        self._pc.start()
+        get_worker().polling = False
+
+
+    async def async_run_polling(self):
+        import asyncio, os
+
+        worker = get_worker()
+        if worker.polling == True:
+            return
+        worker.polling = True
+        
+        while self._worker.output_cache.has_next_now():            
+            df, metadata = self._worker.output_cache.pull_from_cache()
+            if metadata["add_to_specific_cache"] == "false" and len(df) == 0:
+                df = None
+            await UCX.get().send(BlazingMessage(metadata, df))
+        worker.polling = False
+
+
+
+
+CTRL_STOP = "stopit"
+
+>>>>>>> aeb779f... removed all of the prints and couts that I wantonly littered throughout the codebase
 
 class BlazingMessage:
     def __init__(self, metadata, data=None):
@@ -272,8 +305,8 @@ class UCX:
 
             print("Started listener on port " + str(self.listener_port()),flush=True)
 
-            print("ucx progress tasks {}".format(ucp.core._ctx.progress_tasks),flush=True)
-            return self._listener.address
+
+        return "ucx://%s:%s" % (ip, self.listener_port())
         except Exception as e:
 
     def listener_port(self):
@@ -305,12 +338,12 @@ class UCX:
             # Map Dask address to internal ucx endpoint address
         for dask_addr in blazing_msg.metadata["worker_ids"]:
             # Map Dask address to internal ucx endpoint address
-            addr = self.ucx_addresses[dask_addr]
-            print("dask_addr=%s mapped to blazing_ucx_addr=%s" %(dask_addr, addr),flush=True)
+        local_dask_addr = get_worker().ucx_addresses[get_worker().address]
+        if blazing_msg.metadata["sender_worker_id"] in blazing_msg.metadata["worker_ids"]:
 
-            print("local_worker=%s, remote_worker=%s" % (local_dask_addr, addr),flush=True)
-            
-            ep = await self.get_endpoint(addr)
+        for dask_addr in blazing_msg.metadata["worker_ids"]:
+            # Map Dask address to internal ucx endpoint address
+            addr = get_worker().ucx_addresses[dask_addr]
             try:
             ep = await self.get_endpoint(addr)
             try:
