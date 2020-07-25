@@ -2441,12 +2441,12 @@ class BlazingContext(object):
                     print("running on " + str(worker))
                     def execute_communicate(token, workers):
 
-#                        try:
-#                            loop = get_worker().comm_loop
-#                        except AttributeError:
-#                            loop = get_worker().comm_loop = asyncio.get_running_loop()
-#                        asyncio.set_event_loop(loop)
-#
+                        try:
+                            loop = get_worker().comm_loop
+                        except AttributeError:
+                            loop = get_worker().comm_loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+
                         async def main():
                             async with communicate(workers):
                                 with ThreadPoolExecutor(max_workers=1) as executor:
@@ -2454,7 +2454,7 @@ class BlazingContext(object):
                                     loop = asyncio.get_running_loop()
                                     result = await loop.run_in_executor(executor, executeGraph, token)
                                     return result
-                        return asyncio.run(main(),debug=True)
+                        return loop.run_until_complete(main())
 
                     dask_futures.append(
                         self.dask_client.submit(
