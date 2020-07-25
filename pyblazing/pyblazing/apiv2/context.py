@@ -389,9 +389,9 @@ def executeGraph(ctxToken):
 
     graph = worker.query_graphs[ctxToken]
     print("about to run")
-        dfs = cio.runExecuteGraphCaller(graph, is_single_node=False)
-        meta = dask.dataframe.utils.make_meta(dfs[0])
-        query_partids = []
+    dfs = cio.runExecuteGraphCaller(graph, is_single_node=False)
+    print("ran graph")
+    meta = dask.dataframe.utils.make_meta(dfs[0])
     query_partids = []
 
     print("before acquire lock")
