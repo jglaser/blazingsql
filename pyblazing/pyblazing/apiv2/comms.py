@@ -57,7 +57,6 @@ class Communicator():  # doctest: +SKIP
 
         self.ucx = self.dask_worker.ucx
         self.stoprequest = asyncio.Event()
-        self.request_cache = []
 
         import logging
         import sys
@@ -88,25 +87,21 @@ class Communicator():  # doctest: +SKIP
 
                 if have_data:
                     df, metadata = self.dask_worker.output_cache.pull_from_cache()
-                    if metadata["add_to_specific_cache"] == "false":
+                    if metadata["add_to_specific_cache"] == "false" and len(df) == 0:
                         #print("Should never get here!")
                         #print(metadata)
                         df = None
                     print(df,flush=True)
-                    self.request_cache.append(await self.ucx.send(BlazingMessage(metadata, df)))
-
-                    # clean up cache
-                    self.request_cache = [f for f in self.request_cache if not f.done()]
+                    await self.ucx.send(BlazingMessage(metadata, df))
 
             print('Finishing up')
             # finish up
             while self.dask_worker.output_cache.has_next_now():
+                print('Interesting', flush=True)
                 df, metadata = self.dask_worker.output_cache.pull_from_cache()
-                if metadata["add_to_specific_cache"] == "false":
+                if metadata["add_to_specific_cache"] == "false" and len(df) == 0:
                     df = None
-                self.request_cache.append(await self.ucx.send(BlazingMessage(metadata, df)))
-            await asyncio.gather(*self.request_cache)
-            self.request_cache = []
+                await self.ucx.send(BlazingMessage(metadata, df))
             print('Leaving worker')
 
         await work()
@@ -145,7 +140,7 @@ class UCX:
         self.sent = 0
         self.lock = asyncio.Lock()
         self.ucx_addresses = None
-        self.request_cache = []
+        self.active_requests = dict()
 
     async def get_listener(self, callback):
 #        if self._listener is not None:
@@ -174,7 +169,7 @@ class UCX:
             try:
                 while not comm.closed():
                     print("%s- Listening!" % get_worker().address,flush=True)
-                    msg = await asyncio.shield(comm.read())
+                    msg = await comm.read()
                     print("%s- got msg: %s" % (get_worker().address, msg),flush=True)
 
                     msg = BlazingMessage(**{k: v.deserialize()
@@ -263,18 +258,24 @@ class UCX:
                 # dont' await the call to write, to avoid deadlock
                 # await ep.write(msg=to_ser, serializers=serde)
                 # https://github.com/rapidsai/ucx-py/issues/140
+
+                # clear the write cache for this endpoint
+                if dask_addr in self.active_requests:
+                    await self.active_requests.pop(dask_addr)
+
                 task = asyncio.create_task(ep.write(msg=to_ser, serializers=serde))
-                await task # just testing
+                self.active_requests[dask_addr] = task
                 print('After write',flush=True)
             except:
                 print("Error occurred during write",flush=True)
             self.sent += 1
-            print("%d messages sent on %s" % (self.sent, get_worker().address),flush=True)
-            print("seems like it wrote",flush=True)
-            return task
+        print("%d messages sent on %s" % (self.sent, get_worker().address),flush=True)
+        print("seems like it wrote",flush=True)
 
     async def flush_writes(self):
         print('Progress...',flush=True)
+        await asyncio.gather(*self.active_requests.values())
+        self.active_requests.clear()
         await ucp.flush()
         print('done.',flush=True)
 
