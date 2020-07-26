@@ -178,7 +178,6 @@ async def communicate(workers):
             # running UCX progress
             while not Event(ev_name).wait(timeout='5ms'):
                 await asyncio.sleep(0)
-                pass
 
         # run the communication in the background
         loop = asyncio.get_running_loop()
@@ -186,7 +185,6 @@ async def communicate(workers):
         yield task
 
     finally:
-        # set up endpoints
         Event(ev_barrier2+worker.name).set()
 
         for w in workers:
@@ -194,7 +192,6 @@ async def communicate(workers):
 
             while not Event(ev_name).wait(timeout='5ms'):
                 await asyncio.sleep(0)
-                pass
 
         # flush outstanding writes and suspend worker
         await comm.stop(task)
