@@ -285,7 +285,7 @@ public:
 		std::unique_lock<std::mutex> lock(mutex_);
 		condition_variable_.wait_for(lock, 60000ms, [&, this] () {
 			bool done_waiting = count <= this->processed;
-            if (!done_waiting && blazing_timer.elapsed_time() > 60000){
+            if (!done_waiting && blazing_timer.elapsed_time() > 59000){
                 auto logger = spdlog::get("batch_logger");
                 logger->warn("|||{info}|{duration}||||",
                                     "info"_a="WaitingQueue wait_for_count timed out",
@@ -364,7 +364,7 @@ public:
 	message_ptr get_or_wait(std::string message_id) {
 		CodeTimer blazing_timer;
 		std::unique_lock<std::mutex> lock(mutex_);
-		condition_variable_.wait(lock, [message_id, &blazing_timer, this] {
+		while (!condition_variable_.wait_for(lock, 60000ms, [message_id, &blazing_timer, this] {
 				auto result = std::any_of(this->message_queue_.cbegin(),
 							this->message_queue_.cend(), [&](auto &e) {
 								return e->get_message_id() == message_id;
@@ -378,10 +378,7 @@ public:
 										"message_id"_a=message_id);
 				}
 				return done_waiting;
-			});
-		if(this->message_queue_.size() == 0) {
-			return nullptr;
-		}
+			})) {};
 		while (true){
 			auto data = this->pop_unsafe();
 			if (data->get_message_id() == message_id){
