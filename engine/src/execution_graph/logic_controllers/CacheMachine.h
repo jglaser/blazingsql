@@ -283,7 +283,7 @@ public:
 		CodeTimer blazing_timer;
 
 		std::unique_lock<std::mutex> lock(mutex_);
-		condition_variable_.wait_for(lock, 60000ms, [&, this] () {
+		while (!condition_variable_.wait_for(lock, 60000ms, [&, this] () {
 			bool done_waiting = count <= this->processed;
             if (!done_waiting && blazing_timer.elapsed_time() > 59000){
                 auto logger = spdlog::get("batch_logger");
@@ -292,7 +292,7 @@ public:
                                     "duration"_a=blazing_timer.elapsed_time());
             }
             return done_waiting;
-		});
+		})) {};
 
 
 	}
