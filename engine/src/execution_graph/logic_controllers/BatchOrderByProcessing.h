@@ -34,13 +34,16 @@ public:
 	virtual kstatus run() {
 		CodeTimer timer;
 
+        this->input_.get_cache("input_a")->wait_until_finished();
+        this->input_.get_cache("input_b")->wait_until_finished();
+
 		BatchSequence input_partitionPlan(this->input_.get_cache("input_b"), this);
 		auto partitionPlan = std::move(input_partitionPlan.next());
 
 		bool ordered = false;
 		BatchSequence input(this->input_.get_cache("input_a"), this, ordered);
 		int batch_count = 0;
-		while (input.wait_for_next()) {
+		while (input.has_next_now()) {
 			try {
 				auto batch = input.next();
 				auto partitions = ral::operators::partition_table(partitionPlan->toBlazingTableView(), batch->toBlazingTableView(), this->expression);
@@ -201,6 +204,8 @@ public:
 		CodeTimer timer;
 		CodeTimer eventTimer(false);
 
+        this->input_cache()->wait_until_finished();
+
 		bool try_num_rows_estimation = true;
 		bool estimate_samples = false;
 		uint64_t num_rows_estimate = 0;
@@ -222,7 +227,7 @@ public:
 		std::size_t localTotalBytes = 0;
 		int batch_count = 0;
 		bool distributed = false;
-		while (input.wait_for_next()) {
+		while (input.has_next_now()) {
 			try {
 				BlazingThread partition_plan_thread;
 				this->output_cache("output_a")->wait_if_cache_is_saturated();
@@ -334,6 +339,7 @@ public:
 		CodeTimer timer;
 
 		BatchSequence input_partitionPlan(this->input_.get_cache("input_b"), this);
+		this->input_.get_cache("input_b")->wait_until_finished();
 		auto partitionPlan = std::move(input_partitionPlan.next());
 
 		context->incrementQuerySubstep();
@@ -341,6 +347,9 @@ public:
 		std::vector<std::string> messages_to_wait_for;
 		std::map<std::string, int> node_count;
 		BlazingThread generator([input_cache = this->input_.get_cache("input_a"), &partitionPlan, &node_count, &messages_to_wait_for,this](){
+
+            input_cache->wait_until_finished();
+
 			bool ordered = false;
 			BatchSequence input(input_cache, this, ordered);
 			int batch_count = 0;
@@ -348,7 +357,7 @@ public:
 			std::vector<int> sortColIndices;
 			std::tie(sortColIndices, sortOrderTypes, std::ignore) =	ral::operators::get_sort_vars(this->expression);
 			auto& self_node = ral::communication::CommunicationData::getInstance().getSelfNode();
-			while (input.wait_for_next()) {
+			while (input.has_next_now()) {
 				try {
 					auto batch = input.next();
 
@@ -484,7 +493,7 @@ public:
 				// This Kernel needs all of the input before it can do any output. So lets wait until all the input is available
 				this->input_.get_cache(cache_id)->wait_until_finished();
 
-				while (this->input_.get_cache(cache_id)->wait_for_next()) {
+				while (this->input_.get_cache(cache_id)->has_next_now()) {
 					CodeTimer cacheEventTimer(false);
 
 					cacheEventTimer.start();
@@ -572,10 +581,12 @@ public:
 		CodeTimer timer;
 		CodeTimer eventTimer(false);
 
+        this->input_cache()->wait_until_finished();
+
 		int64_t total_batch_rows = 0;
 		std::vector<std::unique_ptr<ral::cache::CacheData>> cache_vector;
 		BatchSequenceBypass input_seq(this->input_cache(), this);
-		while (input_seq.wait_for_next()) {
+		while (input_seq.has_next_now()) {
 			auto batch = input_seq.next();
 			total_batch_rows += batch->num_rows();
 			cache_vector.push_back(std::move(batch));

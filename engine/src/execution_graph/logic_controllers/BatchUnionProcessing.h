@@ -35,6 +35,9 @@ public:
 	virtual kstatus run() {
 		CodeTimer timer;
 
+        this->input_.get_cache("input_a")->wait_until_finished();
+        this->input_.get_cache("input_b")->wait_until_finished();
+
         bool isUnionAll = (get_named_expression(this->expression, "all") == "true");
         RAL_EXPECTS(isUnionAll, "In UnionKernel: UNION is not supported, use UNION ALL");
 

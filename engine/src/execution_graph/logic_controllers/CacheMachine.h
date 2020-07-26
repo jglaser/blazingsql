@@ -280,26 +280,30 @@ public:
 
 
 	void wait_for_count(int count){
+		CodeTimer blazing_timer;
 
 		std::unique_lock<std::mutex> lock(mutex_);
-		condition_variable_.wait(lock, [&, this] () {
-			if (count < this->processed){
-				std::cout<<"WE PRCOESSSED MORE THAN COUNT*******************************"<<std::endl;
-				throw std::exception();
-			}
-			return count <= this->processed;
+		condition_variable_.wait_for(lock, 60000ms, [&, this] () {
+			bool done_waiting = count <= this->processed;
+            if (!done_waiting && blazing_timer.elapsed_time() > 60000){
+                auto logger = spdlog::get("batch_logger");
+                logger->warn("|||{info}|{duration}||||",
+                                    "info"_a="WaitingQueue wait_for_count timed out",
+                                    "duration"_a=blazing_timer.elapsed_time());
+            }
+            return done_waiting;
 		});
 
 
 	}
 
 
-	message_ptr pop_or_wait() {		
+	message_ptr pop_or_wait(bool blocking) {
 
 		CodeTimer blazing_timer;
 		std::unique_lock<std::mutex> lock(mutex_);
 		while(!condition_variable_.wait_for(lock, 60000ms, [&, this] {
-				bool done_waiting = this->finished.load(std::memory_order_seq_cst) or !this->empty();
+				bool done_waiting = (!blocking && this->is_finished()) || !this->empty();
 				if (!done_waiting && blazing_timer.elapsed_time() > 59000){
 					auto logger = spdlog::get("batch_logger");
 					logger->warn("|||{info}|{duration}||||",
@@ -321,7 +325,7 @@ public:
 		CodeTimer blazing_timer;
 		std::unique_lock<std::mutex> lock(mutex_);
 		while(!condition_variable_.wait_for(lock, 60000ms, [&, this] {
-				bool done_waiting = this->finished.load(std::memory_order_seq_cst) or !this->empty();
+				bool done_waiting = !this->empty();
 				if (!done_waiting && blazing_timer.elapsed_time() > 59000){
 					auto logger = spdlog::get("batch_logger");
 					logger->warn("|||{info}|{duration}||||",
@@ -365,7 +369,7 @@ public:
 							this->message_queue_.cend(), [&](auto &e) {
 								return e->get_message_id() == message_id;
 							});
-				bool done_waiting = this->finished.load(std::memory_order_seq_cst) or result;
+				bool done_waiting = result;
 				if (!done_waiting && blazing_timer.elapsed_time() > 59000){
 					auto logger = spdlog::get("batch_logger");
 					logger->warn("|||{info}|{duration}|message_id|{message_id}||",
@@ -494,15 +498,15 @@ public:
 	bool has_next_now() {
 		return this->waitingCache->has_next_now();
 	}
-	virtual std::unique_ptr<ral::frame::BlazingTable> pullFromCache();
+	virtual std::unique_ptr<ral::frame::BlazingTable> pullFromCache(bool blocking=true);
 
 
 	virtual std::unique_ptr<ral::cache::CacheData> pullCacheData(std::string message_id);
 
-	virtual std::unique_ptr<ral::frame::BlazingTable> pullUnorderedFromCache();
+	virtual std::unique_ptr<ral::frame::BlazingTable> pullUnorderedFromCache(bool blocking=true);
 
 
-	virtual std::unique_ptr<ral::cache::CacheData> pullCacheData();
+	virtual std::unique_ptr<ral::cache::CacheData> pullCacheData(bool blocking=true);
 
 
 	bool thresholds_are_met(std::uint32_t batches_count, std::size_t bytes_count);
@@ -605,8 +609,8 @@ public:
 		return this->waitingCache->has_next_now();
 	}
 
-	virtual std::unique_ptr<ral::frame::BlazingHostTable> pullFromCache(Context * ctx = nullptr) {
-		std::unique_ptr<message> message_data = waitingCache->pop_or_wait();
+	virtual std::unique_ptr<ral::frame::BlazingHostTable> pullFromCache(Context * ctx = nullptr, bool blocking=true) {
+		std::unique_ptr<message> message_data = waitingCache->pop_or_wait(blocking);
 		if (message_data == nullptr) {
 			return nullptr;
 		}
@@ -649,10 +653,10 @@ public:
 
 	~ConcatenatingCacheMachine() = default;
 
-	std::unique_ptr<ral::frame::BlazingTable> pullFromCache() override;
+	std::unique_ptr<ral::frame::BlazingTable> pullFromCache(bool blocking=true) override;
 
-	std::unique_ptr<ral::frame::BlazingTable> pullUnorderedFromCache() override {
-		return pullFromCache();
+	std::unique_ptr<ral::frame::BlazingTable> pullUnorderedFromCache(bool blocking=true) override {
+		return pullFromCache(blocking);
 	}
 
 	size_t downgradeCacheData() override { // dont want to be able to downgrage concatenating caches

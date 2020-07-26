@@ -70,7 +70,7 @@ public:
 	void set_source(std::shared_ptr<ral::cache::CacheMachine> cache) {
 		this->cache = cache;
 	}
-	RecordBatch next() {
+	RecordBatch next(bool blocking=true) {
 		std::shared_ptr<spdlog::logger> cache_events_logger;
 		cache_events_logger = spdlog::get("cache_events_logger");
 
@@ -79,9 +79,9 @@ public:
 		cacheEventTimer.start();
 		std::unique_ptr<ral::frame::BlazingTable> output;
 		if (ordered) {
-			output = cache->pullFromCache();
+			output = cache->pullFromCache(blocking);
 		} else {
-			output = cache->pullUnorderedFromCache();
+			output = cache->pullUnorderedFromCache(blocking);
 		}
 		cacheEventTimer.stop();
 
@@ -137,7 +137,7 @@ public:
 		CodeTimer cacheEventTimer(false);
 
 		cacheEventTimer.start();
-		auto output = cache->pullCacheData();
+		auto output = cache->pullCacheData(false);
 		cacheEventTimer.stop();
 
 		if (output) {
@@ -594,9 +594,11 @@ public:
 		CodeTimer timer;
 		CodeTimer eventTimer(false);
 
+        this->input_cache()->wait_until_finished();
+
 		BatchSequence input(this->input_cache(), this);
 		int batch_count = 0;
-		while (input.wait_for_next()) {
+		while (input.has_next_now()) {
 			try {
 				this->output_cache()->wait_if_cache_is_saturated();
 
@@ -671,9 +673,11 @@ public:
 		CodeTimer timer;
 		CodeTimer eventTimer(false);
 
+        this->input_cache()->wait_until_finished();
+
 		BatchSequence input(this->input_cache(), this);
 		int batch_count = 0;
-		while (input.wait_for_next()) {
+		while (input.has_next_now()) {
 			try {
 				this->output_cache()->wait_if_cache_is_saturated();
 
@@ -755,9 +759,11 @@ public:
 	}
 
 	virtual kstatus run() {
+        this->input_cache()->wait_until_finished();
+
 		std::lock_guard<std::mutex> lg(print_lock);
 		BatchSequence input(this->input_cache(), this);
-		while (input.wait_for_next() ) {
+		while (input.has_next_now() ) {
 			auto batch = input.next();
 			ral::utilities::print_blazing_table_view(batch->toBlazingTableView());
 		}
@@ -775,7 +781,9 @@ public:
 	OutputKernel(std::size_t kernel_id, std::shared_ptr<Context> context) : kernel(kernel_id,"OutputKernel", context, kernel_type::OutputKernel) { }
 
 	virtual kstatus run() {
-		while (this->input_.get_cache()->wait_for_next()) {
+        this->input_cache()->wait_until_finished();
+
+		while (this->input_.get_cache()->has_next_now()) {
 			CodeTimer cacheEventTimer(false);
 
 			cacheEventTimer.start();

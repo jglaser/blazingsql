@@ -191,7 +191,7 @@ void CacheMachine::put(size_t message_id, std::unique_ptr<ral::frame::BlazingTab
 void CacheMachine::clear() {
 
 	std::unique_ptr<message> message_data;
-	while(message_data = waitingCache->pop_or_wait()) {
+	while(message_data = waitingCache->pop_or_wait(true)) {
 		printf("...cleaning cache\n");
 	}
 	this->waitingCache->finish();
@@ -382,8 +382,8 @@ std::unique_ptr<ral::frame::BlazingTable> CacheMachine::get_or_wait(size_t index
 	return std::move(output);
 }
 
-std::unique_ptr<ral::frame::BlazingTable> CacheMachine::pullFromCache() {
-	std::unique_ptr<message> message_data = waitingCache->pop_or_wait();
+std::unique_ptr<ral::frame::BlazingTable> CacheMachine::pullFromCache(bool blocking) {
+	std::unique_ptr<message> message_data = waitingCache->pop_or_wait(blocking);
 	if (message_data == nullptr) {
 		return nullptr;
 	}
@@ -429,7 +429,7 @@ std::unique_ptr<ral::cache::CacheData> CacheMachine::pullCacheData(std::string m
 }
 
 
-std::unique_ptr<ral::frame::BlazingTable> CacheMachine::pullUnorderedFromCache() {
+std::unique_ptr<ral::frame::BlazingTable> CacheMachine::pullUnorderedFromCache(bool blocking) {
 
 	std::unique_ptr<message> message_data = nullptr;
 	{ // scope for lock
@@ -464,12 +464,12 @@ std::unique_ptr<ral::frame::BlazingTable> CacheMachine::pullUnorderedFromCache()
 		flow_control_condition_variable.notify_all();
 		return std::move(output);
 	} else {
-		return pullFromCache();
+		return pullFromCache(blocking);
 	}
 }
 
-std::unique_ptr<ral::cache::CacheData> CacheMachine::pullCacheData() {
-	std::unique_ptr<message> message_data = waitingCache->pop_or_wait();
+std::unique_ptr<ral::cache::CacheData> CacheMachine::pullCacheData(bool blocking) {
+	std::unique_ptr<message> message_data = waitingCache->pop_or_wait(blocking);
 	if (message_data == nullptr) {
 		return nullptr;
 	}
@@ -585,13 +585,13 @@ ConcatenatingCacheMachine::ConcatenatingCacheMachine(std::shared_ptr<Context> co
 	: CacheMachine(context, flow_control_batches_threshold, flow_control_bytes_threshold), concat_all(concat_all) {}
 
 // This method does not guarantee the relative order of the messages to be preserved
-std::unique_ptr<ral::frame::BlazingTable> ConcatenatingCacheMachine::pullFromCache() {
+std::unique_ptr<ral::frame::BlazingTable> ConcatenatingCacheMachine::pullFromCache(bool blocking) {
 
 	size_t total_bytes = 0;
 	std::vector<std::unique_ptr<message>> collected_messages;
 	std::unique_ptr<message> message_data;
 	std::string message_id = "";
-	while (message_data = waitingCache->pop_or_wait())
+	while (message_data = waitingCache->pop_or_wait(false))
 	{
 		auto& cache_data = message_data->get_data();
 		if (concat_all || collected_messages.empty() || !thresholds_are_met(1 + collected_messages.size(), total_bytes + cache_data.sizeInBytes())) {

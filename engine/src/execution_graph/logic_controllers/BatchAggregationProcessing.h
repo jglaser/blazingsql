@@ -35,6 +35,8 @@ public:
 		CodeTimer timer;
         CodeTimer eventTimer(false);
 
+        this->input_cache()->wait_until_finished();
+
         std::vector<std::string> aggregation_input_expressions, aggregation_column_assigned_aliases;
         std::tie(this->group_column_indices, aggregation_input_expressions, this->aggregation_types,
             aggregation_column_assigned_aliases) = ral::operators::parseGroupByExpression(this->expression);
@@ -42,7 +44,7 @@ public:
         bool ordered = false; // If we start using sort based aggregations this may need to change
         BatchSequence input(this->input_cache(), this, ordered);
         int batch_count = 0;
-        while (input.wait_for_next()) {
+        while (input.has_next_now()) {
 
             this->output_cache()->wait_if_cache_is_saturated();
             auto batch = input.next();
@@ -169,8 +171,9 @@ public:
             BatchSequence input(this->input_cache(), this, ordered);
             int batch_count = 0;
 
+            this->input_cache()->wait_until_finished();
 
-            while (input.wait_for_next()) {
+            while (input.has_next_now()) {
                 auto batch = input.next();
 
                 try {
@@ -356,7 +359,7 @@ public:
         BatchSequence input(this->input_cache(), this, ordered);
         int batch_count=0;
         try {
-            while (input.wait_for_next()) {
+            while (input.has_next_now()) {
                 auto batch = input.next();
                 // std::cout<<"MergeAggregateKernel batch "<<batch_count<<std::endl;
                 // ral::utilities::print_blazing_table_view_schema(batch->toBlazingTableView(), "MergeAggregateKernel_batch" + std::to_string(batch_count));

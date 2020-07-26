@@ -81,7 +81,7 @@ public:
 	std::unique_ptr<ral::frame::BlazingTable> load_set(BatchSequence & input, std::shared_ptr<ral::cache::CacheMachine> cache, bool load_all){
 		std::size_t bytes_loaded = 0;
 		std::vector<std::unique_ptr<ral::frame::BlazingTable>> tables_loaded;
-		if (input.wait_for_next()){
+		if (input.has_next_now()){
 			tables_loaded.emplace_back(input.next());
 			bytes_loaded += tables_loaded.back()->sizeInBytes();
 		} else {
@@ -94,8 +94,8 @@ public:
 		// This actually does not make it faster, because it makes it so that there are more chunks to do pairwise joins and therefore more join operations
 		// We may want to revisit or rethink this
 
-		while ((input.wait_for_next() && bytes_loaded < join_partition_size_theshold) ||
-					(load_all && input.wait_for_next())) {
+		while ((input.has_next_now() && bytes_loaded < join_partition_size_theshold) ||
+					(load_all && input.has_next_now())) {
 			tables_loaded.emplace_back(std::move(input.next()));
 			bytes_loaded += tables_loaded.back()->sizeInBytes();
 
@@ -293,6 +293,9 @@ public:
     virtual kstatus run() {
 		CodeTimer timer;
 
+        this->input_.get_cache("input_a")->wait_until_finished();
+        this->input_.get_cache("input_b")->wait_until_finished();
+
 		bool ordered = false; 
         this->left_sequence = BatchSequence(this->input_.get_cache("input_a"), this, ordered);
 		this->right_sequence = BatchSequence(this->input_.get_cache("input_b"), this, ordered);
@@ -380,11 +383,11 @@ public:
 								right_batch = this->rightArrayCache->get_or_wait(right_ind);
 							} else {
 								// nothing else for us to do buy wait and see if there are any left to do
-								if (this->left_sequence.wait_for_next()){
+								if (this->left_sequence.has_next_now()){
 									this->leftArrayCache->put(left_ind, std::move(left_batch));
 									left_batch = load_left_set();
 									left_ind = this->max_left_ind;
-								} else if (this->right_sequence.wait_for_next()){
+								} else if (this->right_sequence.has_next_now()){
 									this->rightArrayCache->put(right_ind, std::move(right_batch));
 									right_batch = load_right_set();
 									right_ind = this->max_right_ind;
@@ -613,7 +616,7 @@ public:
 					graph_output->addCacheData(std::make_unique<ral::cache::GPUCacheDataMetaData>(table_view.clone(), metadata),"",true);
 				}
 
-				if (sequence.wait_for_next()){
+				if (sequence.has_next_now()){
 					batch = sequence.next();
 					batch_count++;
 				} else {
@@ -743,8 +746,8 @@ public:
 		metadata.add_value(ral::cache::JOIN_LEFT_BYTES_METADATA_LABEL, std::to_string(left_bytes_estimate));
 		metadata.add_value(ral::cache::JOIN_RIGHT_BYTES_METADATA_LABEL, std::to_string(right_bytes_estimate));
 		ral::cache::CacheMachine* output_cache = this->query_graph->get_output_cache();
-		output_cache->addCacheData(std::make_unique<ral::cache::GPUCacheDataMetaData>(ral::utilities::create_empty_table({}, {}), metadata),"",true);
 
+		output_cache->addCacheData(std::make_unique<ral::cache::GPUCacheDataMetaData>(ral::utilities::create_empty_table({}, {}), metadata),"",true);
 		logger->trace("{query_id}|{step}|{substep}|{info}|{duration}|kernel_id|{kernel_id}||",
 									"query_id"_a=context->getContextToken(),
 									"step"_a=context->getQueryStep(),
@@ -759,6 +762,7 @@ public:
 
 		int64_t prev_total_rows = 0;
 		for (auto i = 0; i < messages_to_wait_for.size(); i++)	{
+
 			auto message = this->query_graph->get_input_cache()->pullCacheData(messages_to_wait_for[i]);
 			auto message_with_metadata = static_cast<ral::cache::GPUCacheDataMetaData*>(message.get());
 			int node_idx = context->getNodeIndex(context->getNode(message_with_metadata->getMetadata().get_values()[ral::cache::SENDER_WORKER_ID_METADATA_LABEL]));
@@ -956,7 +960,7 @@ public:
 						output_cache->addCacheData(std::make_unique<ral::cache::GPUCacheDataMetaData>(small_table_batch->toBlazingTableView().clone(), metadata),"",true);
 						this->output_.get_cache(small_output_cache_name).get()->addToCache(std::move(small_table_batch),"",true);
 					}
-					if (small_table_sequence.wait_for_next()){
+					if (small_table_sequence.has_next_now()){
 						small_table_batch = small_table_sequence.next();
 						batch_count++;
 					} else {
@@ -1021,7 +1025,7 @@ public:
 
 		this->add_to_output_cache(std::move(big_table_batch), big_output_cache_name);
 		BlazingThread big_table_passthrough_thread([this, &big_table_sequence, big_output_cache_name](){
-			while (big_table_sequence.wait_for_next()) {
+			while (big_table_sequence.has_next_now()) {
 				auto batch = big_table_sequence.next();
 				this->add_to_output_cache(std::move(batch), big_output_cache_name);
 			}
@@ -1034,6 +1038,9 @@ public:
 
 	virtual kstatus run() {
 		CodeTimer timer;
+
+        this->input_.get_cache("input_a")->wait_until_finished();
+        this->input_.get_cache("input_b")->wait_until_finished();
 
 		bool ordered = false;
 		BatchSequence left_sequence(this->input_.get_cache("input_a"), this, ordered);
@@ -1050,7 +1057,7 @@ public:
 		std::unique_ptr<ral::frame::BlazingTable> right_batch = right_sequence.next();
 
 		if (left_batch == nullptr || left_batch->num_columns() == 0){
-			while (left_sequence.wait_for_next()){
+			while (left_sequence.has_next_now()){
 				left_batch = left_sequence.next();
 				if (left_batch != nullptr && left_batch->num_columns() > 0){
 					break;

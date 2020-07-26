@@ -183,14 +183,7 @@ std::vector<NodeColumnView> partitionData(Context * context,
 	std::vector<cudf::size_type> host_data(pivot_indexes->view().size());
 	CUDA_TRY(cudaMemcpy(host_data.data(), pivot_indexes->view().data<cudf::size_type>(), pivot_indexes->view().size() * sizeof(cudf::size_type), cudaMemcpyDeviceToHost));
 
-	for(auto pivot : host_data){
-		std::cout<<pivot<<",";
-	}
-	std::cout<<std::endl;
-	std::cout<<"table size in split is "<<table.num_rows()<<std::endl;
-
 	std::vector<CudfTableView> partitioned_data = cudf::split(table.view(), host_data);
-	std::cout<<"partitioned_data is "<<partitioned_data.size()<<std::endl;
 //	ral::utilities::print_blazing_table_view(BlazingTableView(partitioned_data,std::vector<std::string>(partitioned_data.size())));	
 	std::vector<Node> all_nodes = context->getAllNodes();
 
