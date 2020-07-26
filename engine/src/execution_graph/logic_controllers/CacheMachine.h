@@ -284,7 +284,10 @@ public:
 
 		std::unique_lock<std::mutex> lock(mutex_);
 		while (!condition_variable_.wait_for(lock, 60000ms, [&, this] () {
-			bool done_waiting = count <= this->processed;
+			bool done_waiting = count == this->processed;
+            if (this->processed > count){
+                throw std::runtime_error("WaitingQueue::wait_for_count encountered " + std::to_string(this->processed) + " when expecting " + std::to_string(count));
+            }
             if (!done_waiting && blazing_timer.elapsed_time() > 59000){
                 auto logger = spdlog::get("batch_logger");
                 logger->warn("|||{info}|{duration}||||",
