@@ -338,8 +338,10 @@ public:
 
 		CodeTimer timer;
 
-		BatchSequence input_partitionPlan(this->input_.get_cache("input_b"), this);
+		this->input_.get_cache("input_a")->wait_until_finished();
 		this->input_.get_cache("input_b")->wait_until_finished();
+
+		BatchSequence input_partitionPlan(this->input_.get_cache("input_b"), this);
 		auto partitionPlan = std::move(input_partitionPlan.next());
 
 		context->incrementQuerySubstep();
@@ -347,8 +349,6 @@ public:
 		std::vector<std::string> messages_to_wait_for;
 		std::map<std::string, int> node_count;
 		BlazingThread generator([input_cache = this->input_.get_cache("input_a"), &partitionPlan, &node_count, &messages_to_wait_for,this](){
-
-            input_cache->wait_until_finished();
 
 			bool ordered = false;
 			BatchSequence input(input_cache, this, ordered);
