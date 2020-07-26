@@ -176,7 +176,7 @@ async def communicate(workers):
 
             # the timed wait is ONLY there to yield the asyncio loop to the concurrently
             # running UCX progress
-            while not Event(ev_name).wait(timeout='0.1s'):
+            while not Event(ev_name).wait(timeout='5ms'):
                 await asyncio.sleep(0)
                 pass
 
@@ -192,7 +192,7 @@ async def communicate(workers):
         for w in workers:
             ev_name = ev_barrier2+w
 
-            while not Event(ev_name).wait(timeout='0.1s'):
+            while not Event(ev_name).wait(timeout='5ms'):
                 await asyncio.sleep(0)
                 pass
 
