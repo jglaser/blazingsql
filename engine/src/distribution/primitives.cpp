@@ -178,13 +178,13 @@ std::vector<NodeColumnView> partitionData(Context * context,
                                     pivots.view(),
                                     sortOrderTypes,
                                     null_orders);
-	
 
 	std::vector<cudf::size_type> host_data(pivot_indexes->view().size());
 	CUDA_TRY(cudaMemcpy(host_data.data(), pivot_indexes->view().data<cudf::size_type>(), pivot_indexes->view().size() * sizeof(cudf::size_type), cudaMemcpyDeviceToHost));
 
 	std::vector<Node> all_nodes = context->getAllNodes();
 
+    std::vector<CudfTableView> partitioned_data = cudf::split(table.view(), host_data);
 	RAL_EXPECTS(all_nodes.size() <= partitioned_data.size(), "Number of table partitions is smalled than total nodes");
 
 	int step = static_cast<int>(partitioned_data.size() / all_nodes.size());
