@@ -116,33 +116,31 @@ public:
 			std::unique_ptr<ral::frame::BlazingTable> partitionPlan;
 			if(context->isMasterNode(self_node)) {
 				context->incrementQuerySubstep();
-				auto nodes = context->getAllNodes();
+				int self_node_idx = context->getNodeIndex(self_node);
+				auto nodes = context->getAllOtherNodes(self_node_idx);
 
-				int samples_to_collect = this->context->getAllNodes().size();
 				std::vector<std::unique_ptr<ral::cache::CacheData> >table_scope_holder;
 				std::vector<size_t> total_table_rows;
 
 				for(std::size_t i = 0; i < nodes.size(); ++i) {
-					if(!(nodes[i] == self_node)) {
-						std::string message_id = std::to_string(this->context->getContextToken()) + "_" + std::to_string(this->get_id()) + "_" + nodes[i].id();
+                    std::string message_id = std::to_string(this->context->getContextToken()) + "_" + std::to_string(this->get_id()) + "_" + nodes[i].id();
 
 
-						table_scope_holder.push_back(this->query_graph->get_input_cache()->pullCacheData(message_id));
-						ral::cache::GPUCacheDataMetaData * cache_ptr = static_cast<ral::cache::GPUCacheDataMetaData *> (table_scope_holder[table_scope_holder.size() - 1].get());
+                    table_scope_holder.push_back(this->query_graph->get_input_cache()->pullCacheData(message_id));
+                    ral::cache::GPUCacheDataMetaData * cache_ptr = static_cast<ral::cache::GPUCacheDataMetaData *> (table_scope_holder[table_scope_holder.size() - 1].get());
 
-						total_table_rows.push_back(std::stoll(cache_ptr->getMetadata().get_values()[ral::cache::TOTAL_TABLE_ROWS_METADATA_LABEL]));
-						samples.push_back(cache_ptr->getTableView());
-					}
-				}
+                    total_table_rows.push_back(std::stoll(cache_ptr->getMetadata().get_values()[ral::cache::TOTAL_TABLE_ROWS_METADATA_LABEL]));
+                    samples.push_back(cache_ptr->getTableView());
+                }
 
 				samples.push_back(concatSamples->toBlazingTableView());
 				total_table_rows.push_back(local_total_num_rows);
 
-
 				std::size_t totalNumRows = std::accumulate(total_table_rows.begin(), total_table_rows.end(), std::size_t(0));
 				partitionPlan = ral::operators::generate_partition_plan(samples, totalNumRows, avg_bytes_per_row, this->expression, this->context.get());
 
-				int self_node_idx = context->getNodeIndex(self_node);
+				context->incrementQuerySubstep();
+
 				auto nodes_to_send = context->getAllOtherNodes(self_node_idx);
 				std::string worker_ids_metadata;
 				for (auto i = 0; i < nodes_to_send.size(); i++)	{
@@ -162,7 +160,6 @@ public:
 				metadata.add_value(ral::cache::SENDER_WORKER_ID_METADATA_LABEL, self_node.id());
 				metadata.add_value(ral::cache::WORKER_IDS_METADATA_LABEL, worker_ids_metadata);
 				metadata.add_value(ral::cache::TOTAL_TABLE_ROWS_METADATA_LABEL, std::to_string(local_total_num_rows));
-
 
 				ral::cache::CacheMachine* output_cache = this->query_graph->get_output_cache();
 				output_cache->addCacheData(std::unique_ptr<ral::cache::GPUCacheDataMetaData>(new ral::cache::GPUCacheDataMetaData(std::move(partitionPlan->toBlazingTableView().clone()), metadata)),"",true);
@@ -187,9 +184,7 @@ public:
 				ral::cache::CacheMachine* output_cache = this->query_graph->get_output_cache();
 				concatSamples->ensureOwnership();
 				output_cache->addCacheData(std::unique_ptr<ral::cache::GPUCacheData>(new ral::cache::GPUCacheDataMetaData(std::move(concatSamples), metadata)),"",true);
-
 				context->incrementQuerySubstep();
-
 			}
 
 			this->output_cache("output_b")->wait_for_count(1);
@@ -247,14 +242,11 @@ public:
 				// Try samples estimation
 				if(try_num_rows_estimation) {
 					std::tie(estimate_samples, num_rows_estimate) = this->query_graph->get_estimated_input_rows_to_cache(this->get_id(), std::to_string(this->get_id()));
-					if (num_rows_estimate == 0){
-						num_rows_estimate = 10;
-					}
-					population_to_sample = static_cast<uint64_t>(std::ceil(num_rows_estimate * order_by_samples_ratio));
+					population_to_sample = num_rows_estimate * order_by_samples_ratio;
 					try_num_rows_estimation = false;
 				}
 				population_sampled += batch->num_rows();
-				if (estimate_samples && population_to_sample > 0 && population_sampled > population_to_sample)	{
+				if (estimate_samples && (population_sampled >= population_to_sample)){
 					size_t avg_bytes_per_row = localTotalNumRows == 0 ? 1 : localTotalBytes/localTotalNumRows;
 					partition_plan_thread = BlazingThread(&SortAndSampleKernel::compute_partition_plan, this, sampledTableViews, avg_bytes_per_row, num_rows_estimate);
 					estimate_samples = false;

@@ -96,7 +96,6 @@ std::unique_ptr<BlazingTable> generatePartitionPlans(
 				const std::vector<cudf::order> & sortOrderTypes) {
 
 	std::unique_ptr<BlazingTable> concatSamples = ral::utilities::concatTables(samples);
-	std::cout<<"========================"<<std::endl<<concatSamples->num_rows();
 
 	std::vector<cudf::null_order> null_orders(sortOrderTypes.size(), cudf::null_order::AFTER);
 	// TODO this is just a default setting. Will want to be able to properly set null_order

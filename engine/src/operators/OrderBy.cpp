@@ -222,7 +222,7 @@ std::unique_ptr<ral::frame::BlazingTable> generate_partition_plan(const std::vec
 	total_num_partitions = total_num_partitions <= 0 ? 1 : total_num_partitions;
 	// want to make the total_num_partitions to be a multiple of the number of nodes to evenly distribute
 	total_num_partitions = ((total_num_partitions + num_nodes - 1) / num_nodes) * num_nodes;
-	total_num_partitions = total_num_partitions > max_num_order_by_partitions_per_node * num_nodes ? max_num_order_by_partitions_per_node * num_nodes : total_num_partitions;
+	total_num_partitions = (total_num_partitions > (max_num_order_by_partitions_per_node * num_nodes)) ? (max_num_order_by_partitions_per_node * num_nodes) : total_num_partitions;
 
 	std::string info = "table_num_rows: " + std::to_string(table_num_rows) + " avg_bytes_per_row: " + std::to_string(avg_bytes_per_row) +
 							" total_num_partitions: " + std::to_string(total_num_partitions) +
