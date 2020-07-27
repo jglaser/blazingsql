@@ -1,3 +1,4 @@
+import cudf
 import ucp
 from distributed import get_worker
 
@@ -26,7 +27,6 @@ async def route_message(msg):
     else:
         cache = worker.input_cache
         if(msg.data is None):
-            import cudf
             msg.data = cudf.DataFrame()
         cache.add_to_cache_with_meta(msg.data, msg.metadata)
 
