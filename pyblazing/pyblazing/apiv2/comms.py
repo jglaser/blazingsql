@@ -62,7 +62,8 @@ class Communicator():  # doctest: +SKIP
     async def start(self):
         async def work():
             while not self.stoprequest.is_set():
-                await asyncio.sleep(0)
+                # the latency is intentional to not overwhelm the asyncio loop with (blocking) cache polls
+                await asyncio.sleep(0.001)
                 have_data = self.dask_worker.output_cache.has_next_now()
 
                 if have_data:
@@ -71,20 +72,14 @@ class Communicator():  # doctest: +SKIP
                         df = None
                     await self.ucx.send(BlazingMessage(metadata, df))
 
-            # finish up
-            while self.dask_worker.output_cache.has_next_now():
-                print('Interesting. I was asked to send another message afer graph completion.', flush=True)
-                df, metadata = self.dask_worker.output_cache.pull_from_cache()
-                if metadata["add_to_specific_cache"] == "false" and len(df) == 0:
-                    df = None
-#                await self.ucx.send(BlazingMessage(metadata, df))
+            if self.dask_worker.output_cache.has_next_now():
+                raise RuntimeError('Message left in queue after graph completion.')
 
         await work()
 
     async def stop(self, worker_task):
         self.stoprequest.set()
         await worker_task
-        await self.ucx.flush_writes()
 
 class BlazingMessage:
     def __init__(self, metadata, data=None):
@@ -115,7 +110,8 @@ class UCX:
         self.sent = 0
         self.lock = asyncio.Lock()
         self.ucx_addresses = None
-        self.active_requests = dict()
+        self.write_queues = dict()
+        self.worker_tasks = dict()
 
     async def get_listener(self, callback):
         if self._listener is not None:
@@ -159,9 +155,17 @@ class UCX:
     def listener_port(self):
         return self._listener.port
 
+    async def worker(self, queue, ep):
+        while True:
+            msg = await queue.get()
+            await ep.write(msg=msg, serializers=serde)
+
     async def _create_endpoint(self, addr):
         ep = await UCXConnector().connect(addr)
         self._endpoints[addr] = ep
+        queue = asyncio.Queue()
+        self.write_queues[addr] = queue
+        self.worker_tasks[addr] = asyncio.create_task(self.worker(queue, ep))
         return ep
 
     async def get_endpoint(self, addr):
@@ -188,17 +192,8 @@ class UCX:
             if blazing_msg.data is not None:
                 to_ser["data"] = to_serialize(blazing_msg.data)
 
-            if dask_addr in self.active_requests:
-                await self.active_requests.pop(dask_addr)
-
-            task = asyncio.create_task(ep.write(msg=to_ser, serializers=serde))
-            self.active_requests[dask_addr] = task
+            self.write_queues[addr].put_nowait(to_ser)
             self.sent += 1
-
-    async def flush_writes(self):
-        await asyncio.gather(*self.active_requests.values())
-        self.active_requests.clear()
-        await ucp.flush()
 
     def abort_endpoints(self):
         for addr, ep in self._endpoints.items():
